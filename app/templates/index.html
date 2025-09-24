@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interpole AI PartsFinder</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <!-- Header -->
+        <header class="text-center mb-12">
+            <h1 class="text-4xl font-bold text-green-800 mb-4">🚜 Interpole AI PartsFinder</h1>
+            <p class="text-gray-600 text-lg">Загрузите одно или несколько фото сломанной детали, чтобы найти ее аналог в нашем каталоге.</p>
+        </header>
+
+        <!-- Upload Form -->
+        <div class="max-w-2xl mx-auto bg-white rounded-lg shadow-lg p-8 mb-8">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-6 text-center">
+                <i class="fas fa-upload mr-2"></i>Загрузите фотографии детали
+            </h2>
+            
+            <form id="uploadForm" class="space-y-6">
+                <div class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-green-400 transition-colors"
+                     ondrop="handleDrop(event)" ondragover="handleDragOver(event)">
+                    <i class="fas fa-cloud-upload-alt text-4xl text-gray-400 mb-4"></i>
+                    <p class="text-gray-600 mb-4">Перетащите фото сюда или нажмите для выбора</p>
+                    <input type="file" id="fileInput" name="images" multiple accept="image/*" 
+                           class="hidden" onchange="handleFileSelect(event)">
+                    <button type="button" onclick="document.getElementById('fileInput').click()" 
+                            class="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-6 rounded-lg transition-colors">
+                        <i class="fas fa-folder-open mr-2"></i>Выберите изображение
+                    </button>
+                    <p class="text-sm text-gray-500 mt-2">Максимум 3 изображения (PNG, JPG, JPEG)</p>
+                </div>
+
+                <div id="previewContainer" class="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6 hidden">
+                    <!-- Preview images will be added here -->
+                </div>
+
+                <div class="text-center">
+                    <button type="submit" 
+                            class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-lg text-lg transition-colors disabled:opacity-50"
+                            id="searchButton" disabled>
+                        <i class="fas fa-search mr-2"></i>Найти похожую деталь
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Loading Indicator -->
+        <div id="loadingIndicator" class="hidden text-center py-8">
+            <div class="inline-block animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-green-600 mb-4"></div>
+            <p class="text-gray-600">Анализ фотографии и поиск похожей детали...</p>
+        </div>
+
+        <!-- Results -->
+        <div id="resultsContainer" class="max-w-6xl mx-auto hidden">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-6 text-center">
+                <i class="fas fa-list mr-2"></i>Результаты поиска
+            </h2>
+            <div id="resultsGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+                <!-- Results will be populated here -->
+            </div>
+        </div>
+
+        <!-- Error Message -->
+        <div id="errorMessage" class="max-w-2xl mx-auto bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg hidden">
+            <p id="errorText"></p>
+        </div>
+    </div>
+
+    <script>
+        let selectedFiles = [];
+
+        // Handle file selection
+        function handleFileSelect(event) {
+            const files = event.target.files;
+            handleFiles(files);
+        }
+
+        // Handle drag and drop
+        function handleDrop(event) {
+            event.preventDefault();
+            const files = event.dataTransfer.files;
+            handleFiles(files);
+        }
+
+        function handleDragOver(event) {
+            event.preventDefault();
+        }
+
+        // Process selected files
+        function handleFiles(files) {
+            selectedFiles = Array.from(files).slice(0, 3); // Limit to 3 files
+            
+            const previewContainer = document.getElementById('previewContainer');
+            const searchButton = document.getElementById('searchButton');
+            
+            previewContainer.innerHTML = '';
+            previewContainer.classList.remove('hidden');
+            
+            if (selectedFiles.length > 0) {
+                searchButton.disabled = false;
+                
+                selectedFiles.forEach((file, index) => {
+                    if (file.type.startsWith('image/')) {
+                        const reader = new FileReader();
+                        reader.onload = function(e) {
+                            const previewDiv = document.createElement('div');
+                            previewDiv.className = 'relative';
+                            previewDiv.innerHTML = `
+                                <img src="${e.target.result}" alt="Preview ${index + 1}" 
+                                     class="w-full h-32 object-cover rounded-lg shadow">
+                                <div class="absolute top-1 right-1 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
+                                    ${index + 1}
+                                </div>
+                            `;
+                            previewContainer.appendChild(previewDiv);
+                        };
+                        reader.readAsDataURL(file);
+                    }
+                });
+            } else {
+                previewContainer.classList.add('hidden');
+                searchButton.disabled = true;
+            }
+        }
+
+        // Handle form submission
+        document.getElementById('uploadForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            if (selectedFiles.length === 0) {
+                showError('Please select at least one image');
+                return;
+            }
+            
+            const formData = new FormData();
+            selectedFiles.forEach(file => {
+                formData.append('images', file);
+            });
+            
+            // Show loading indicator
+            document.getElementById('loadingIndicator').classList.remove('hidden');
+            document.getElementById('resultsContainer').classList.add('hidden');
+            document.getElementById('errorMessage').classList.add('hidden');
+            document.getElementById('searchButton').disabled = true;
+            
+            try {
+                const response = await fetch('/search', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    displayResults(data);
+                } else {
+                    showError(data.error || 'Search failed');
+                }
+            } catch (error) {
+                showError('Network error: ' + error.message);
+            } finally {
+                document.getElementById('loadingIndicator').classList.add('hidden');
+                document.getElementById('searchButton').disabled = false;
+            }
+        });
+
+        // Display search results
+        function displayResults(data) {
+            const resultsContainer = document.getElementById('resultsContainer');
+            const resultsGrid = document.getElementById('resultsGrid');
+            
+            resultsGrid.innerHTML = '';
+            
+            data.results.forEach(result => {
+                const resultCard = document.createElement('div');
+                resultCard.className = 'bg-white rounded-lg shadow-lg overflow-hidden hover:shadow-xl transition-shadow';
+                resultCard.innerHTML = `
+                    <div class="relative">
+                        ${result.image_preview ? 
+                            `<img src="data:image/jpeg;base64,${result.image_preview}" 
+                                  alt="${result.part_id}" 
+                                  class="w-full h-48 object-cover">` :
+                            `<div class="w-full h-48 bg-gray-200 flex items-center justify-center">
+                                <i class="fas fa-image text-gray-400 text-2xl"></i>
+                            </div>`
+                        }
+                        <div class="absolute top-2 left-2 bg-blue-600 text-white text-sm font-bold px-2 py-1 rounded">
+                            #${result.rank}
+                        </div>
+                        <div class="absolute top-2 right-2 bg-green-600 text-white text-sm font-bold px-2 py-1 rounded">
+                            ${result.distance.toFixed(2)}
+                        </div>
+                    </div>
+                    <div class="p-4">
+                        <h3 class="font-semibold text-gray-800 text-center mb-2">${result.part_id}</h3>
+                        <div class="text-center">
+                            <span class="inline-block bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded">
+                                Distance: ${result.distance.toFixed(4)}
+                            </span>
+                        </div>
+                    </div>
+                `;
+                resultsGrid.appendChild(resultCard);
+            });
+            
+            resultsContainer.classList.remove('hidden');
+            
+            // Scroll to results
+            resultsContainer.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // Show error message
+        function showError(message) {
+            const errorDiv = document.getElementById('errorMessage');
+            const errorText = document.getElementById('errorText');
+            
+            errorText.textContent = message;
+            errorDiv.classList.remove('hidden');
+            
+            // Auto-hide after 5 seconds
+            setTimeout(() => {
+                errorDiv.classList.add('hidden');
+            }, 5000);
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('Agro Parts Search loaded');
+        });
+    </script>
+</body>
+</html>
